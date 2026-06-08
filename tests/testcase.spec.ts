@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/fixtures';
+import { test , expect } from '../fixtures/fixtures';
 
 declare const process: {
     env: {
@@ -8,30 +8,39 @@ declare const process: {
 };
 
 test.describe('TestCase', () => {
-    test('TC1 - Search book with multiple results', async ({ page }) => {
-        await page.goto('https://demoqa.com/books');
-        await page.getByPlaceholder(/type to search/i).fill('Design');
-        await expect(page.getByRole('link', { name: /design/i }).first()).toBeVisible();
+    test('TC1 - Search book with multiple results', async ({ booksPage }) => {
+        await booksPage.open();
+        await booksPage.searchBook('Design');
+        await booksPage.expectSearchResultContains(/design/i);
     });
 
-    test('TC2 - Delete book successfully', async ({ page, loginPage }) => {
+    test('TC2 - Delete book successfully', async ({ loginPage, profilePage, bookStoreApi }) => {
+        const isbn = '9781449331818';
+        const bookName = 'Learning JavaScript Design Patterns';
+
+        // Login via API to get token and userId
+        const { userId, token } = await bookStoreApi.login(
+            process.env.DEMOQA_USER!,
+            process.env.DEMOQA_PASS!
+        );
+
+        // GET all books from API, find the target book by isbn
+        const books = await bookStoreApi.getBooks();
+        const targetBook = books.find(b => b.isbn === isbn);
+        expect(targetBook).toBeDefined();
+        expect(targetBook!.title).toBe(bookName);
+
+        // Add book to collection via API (no UI interaction)
+        await bookStoreApi.addBookToCollection(userId, token, isbn);
+
+        // Login via UI then verify book appears in profile and delete it
         await loginPage.open();
         await loginPage.login(process.env.DEMOQA_USER!, process.env.DEMOQA_PASS!);
         await loginPage.expectLoginSuccess(process.env.DEMOQA_USER!);
 
-        await page.goto('https://demoqa.com/books');
-        //page.on('dialog', dialog => dialog.accept());
-
-        await page.getByPlaceholder(/type to search/i).fill('Design');
-        await page.getByRole('link', { name: 'Learning JavaScript Design Patterns' }).click();
-        await page.getByRole('button', { name: 'Add To Your Collection' }).click();
-
-        await page.goto('https://demoqa.com/profile');
-
-        const bookRow = page.getByRole('row').filter({ hasText: 'Learning JavaScript Design Patterns' });
-        await bookRow.locator('span[title="Delete"]').click();
-        await page.getByRole('button', { name: 'OK', exact: true }).click();
-
-        await expect(bookRow).toHaveCount(0);
+        await profilePage.open();
+        await profilePage.expectBookInCollection(bookName);
+        await profilePage.deleteBook(bookName);
+        await profilePage.expectBookNotInCollection(bookName);
     });
 });
